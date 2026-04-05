@@ -1,3 +1,6 @@
+import java.io.File;
+
+import filter.ImageFilter;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -5,6 +8,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
+import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -17,7 +21,22 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-public class MainUI {
+public class MainUI 
+{
+    private ImageView originalImageView;
+    private ImageView processedImageView;
+    private ImageView graphImageView;
+
+    private Label originalPlaceholder;
+    private Label processedPlaceholder;
+    private Label graphPlaceholder;
+
+    private Image selectedImage;
+    private File selectedFile;
+    private Image grayImg;
+    private Image maskedImg;
+
+    private Label statusLabel;
 
     public Scene createScene(Stage stage) {
 
@@ -34,7 +53,7 @@ public class MainUI {
 
         Button uploadBtn = new Button("⬆  Upload Image");
         Button processBtn = new Button("⚙  Process");
-        Button clearBtn   = new Button("✕  Clear");
+        Button clearBtn = new Button("✕  Clear");
 
         styleButton(uploadBtn, "#1a73e8");
         styleButton(processBtn, "#0f9d58");
@@ -52,15 +71,15 @@ public class MainUI {
         BorderPane.setAlignment(actionButtons, Pos.CENTER_RIGHT);
 
         // ── IMAGE PANELS ────────────────────────────────────────────
-        VBox originalPanel  = createImagePanel("Original Image",  "#1e2a3a");
-        VBox processedPanel = createImagePanel("Processed Image", "#1e2a3a");
-        VBox graphPanel     = createImagePanel("Graph Overlay",   "#1e2a3a");
+        VBox originalPanel = createImagePanel("Original Image", "#1e2a3a", "original");
+        VBox processedPanel = createImagePanel("Processed Image", "#1e2a3a", "processed");
+        VBox graphPanel = createImagePanel("Graph Overlay", "#1e2a3a", "graph");
 
         HBox imagePanels = new HBox(10, originalPanel, processedPanel, graphPanel);
         imagePanels.setPadding(new Insets(10, 15, 5, 15));
-        HBox.setHgrow(originalPanel,  Priority.ALWAYS);
+        HBox.setHgrow(originalPanel, Priority.ALWAYS);
         HBox.setHgrow(processedPanel, Priority.ALWAYS);
-        HBox.setHgrow(graphPanel,     Priority.ALWAYS);
+        HBox.setHgrow(graphPanel, Priority.ALWAYS);
 
         // ── RESULTS PANEL ───────────────────────────────────────────
         Label resultsTitle = new Label("Analysis Results");
@@ -68,11 +87,12 @@ public class MainUI {
         resultsTitle.setTextFill(Color.WHITE);
 
         HBox affectedBranch = makeResultLabel("Affected Branch:", "—");
-        HBox narrowing      = makeResultLabel("Narrowing Level:", "—");
-        HBox pathTrace      = makeResultLabel("Path Trace:", "—");
+        HBox narrowing = makeResultLabel("Narrowing Level:", "—");
+        HBox pathTrace = makeResultLabel("Path Trace:", "—");
         HBox possibleDisease = makeResultLabel("Possible Condition:", "—");
 
-        VBox resultItems = new VBox(10,
+        VBox resultItems = new VBox(
+                10,
                 new Separator(),
                 affectedBranch,
                 narrowing,
@@ -82,7 +102,7 @@ public class MainUI {
         );
         resultItems.setPadding(new Insets(10, 0, 0, 0));
 
-        Label statusLabel = new Label("Status: Awaiting image upload...");
+        statusLabel = new Label("Status: Awaiting image upload...");
         statusLabel.setFont(Font.font("Segoe UI", 12));
         statusLabel.setTextFill(Color.LIGHTGRAY);
 
@@ -99,17 +119,61 @@ public class MainUI {
         HBox.setHgrow(resultsScroll, Priority.ALWAYS);
 
         // ── BUTTON ACTIONS ──────────────────────────────────────────
+
+        // Upload button
         uploadBtn.setOnAction(e -> {
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Select Airway Image");
             fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg", "*.bmp")
+                    new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg", "*.bmp")
             );
-            fileChooser.showOpenDialog(stage);
-            statusLabel.setText("Status: Image loaded. Ready to process.");
+
+            File file = fileChooser.showOpenDialog(stage);
+
+            if (file != null) {
+                selectedFile = file;
+                selectedImage = new Image(file.toURI().toString());
+
+                originalImageView.setImage(selectedImage);
+                originalPlaceholder.setVisible(false);
+
+                statusLabel.setText("Status: Image loaded. Ready to process.");
+            }
         });
 
+        // Process button
+        processBtn.setOnAction(e -> {
+            if (selectedImage == null) {
+                statusLabel.setText("Status: Please upload an image first.");
+                return;
+            }
+
+            ImageFilter filtered = new ImageFilter(selectedImage);
+            grayImg = filtered.grayScaleImage();
+            processedImageView.setImage(grayImg);
+            
+            maskedImg = filtered.applyMask(grayImg, 128);
+            graphImageView.setImage(maskedImg);
+
+            processedPlaceholder.setVisible(false);
+            graphPlaceholder.setVisible(false);
+
+            statusLabel.setText("Status: Image processed.");
+        });
+
+        // Clear button
         clearBtn.setOnAction(e -> {
+            selectedFile = null;
+            selectedImage = null;
+
+            originalImageView.setImage(null);
+            processedImageView.setImage(null);
+            graphImageView.setImage(null);
+
+            originalPlaceholder.setVisible(true);
+            processedPlaceholder.setVisible(true);
+            graphPlaceholder.setVisible(true);
+
             statusLabel.setText("Status: Cleared. Awaiting image upload...");
         });
 
@@ -123,7 +187,7 @@ public class MainUI {
 
     // ── HELPERS ─────────────────────────────────────────────────────
 
-    private VBox createImagePanel(String title, String bgColor) {
+    private VBox createImagePanel(String title, String bgColor, String type) {
         Label label = new Label(title);
         label.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 13));
         label.setTextFill(Color.LIGHTGRAY);
@@ -137,7 +201,20 @@ public class MainUI {
         placeholder.setTextFill(Color.GRAY);
         placeholder.setFont(Font.font("Segoe UI", 12));
 
+        // Save the correct ImageView and placeholder into private fields
+        if (type.equals("original")) {
+            originalImageView = imageView;
+            originalPlaceholder = placeholder;
+        } else if (type.equals("processed")) {
+            processedImageView = imageView;
+            processedPlaceholder = placeholder;
+        } else if (type.equals("graph")) {
+            graphImageView = imageView;
+            graphPlaceholder = placeholder;
+        }
+
         StackPane imageArea = new StackPane(imageView, placeholder);
+        imageArea.setAlignment(Pos.CENTER);
         imageArea.setStyle("-fx-background-color: #0d1117; -fx-background-radius: 6;");
         imageArea.setPrefHeight(300);
         VBox.setVgrow(imageArea, Priority.ALWAYS);
@@ -165,12 +242,12 @@ public class MainUI {
 
     private void styleButton(Button btn, String color) {
         btn.setStyle(
-            "-fx-background-color: " + color + ";" +
-            "-fx-text-fill: white;" +
-            "-fx-font-size: 13px;" +
-            "-fx-padding: 8 16 8 16;" +
-            "-fx-background-radius: 6;" +
-            "-fx-cursor: hand;"
+                "-fx-background-color: " + color + ";" +
+                "-fx-text-fill: white;" +
+                "-fx-font-size: 13px;" +
+                "-fx-padding: 8 16 8 16;" +
+                "-fx-background-radius: 6;" +
+                "-fx-cursor: hand;"
         );
     }
 }
