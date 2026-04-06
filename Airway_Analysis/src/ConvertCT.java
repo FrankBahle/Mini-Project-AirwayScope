@@ -6,8 +6,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import javax.imageio.ImageIO;
 
-
-// These imports may need slight adjustment depending on the exact JAR you add.
 import com.ericbarnhill.niftijio.NiftiVolume;
 
 public class ConvertCT {
@@ -15,89 +13,33 @@ public class ConvertCT {
     public static void main(String[] args) {
         try {
             Config config = parseArgs(args);
+            Path caseDir = Paths.get(config.baseDir, config.caseNumber);
+            Path outputRoot = Paths.get(config.outputRoot);
 
-            String caseNumber = config.caseNumber;
+            ConversionResult result = convertCaseFromFolder(
+                    caseDir,
+                    outputRoot,
+                    config.onlyNonemptyAirway,
+                    config.clipMin,
+                    config.clipMax
+            );
 
-            Path caseDir = Paths.get(config.baseDir, caseNumber);
-            if (!Files.exists(caseDir)) {
-                throw new IOException("Case folder not found: " + caseDir);
-            }
-
-            Path ctPath = findNiftiFile(caseDir, caseNumber + "_CT_HR");
-            Path airwayPath = findNiftiFile(caseDir, caseNumber + "_CT_HR_label_airways");
-            Path lungPath = findNiftiFile(caseDir, caseNumber + "_CT_HR_label_lungs");
-
-            System.out.println("Case folder: " + caseDir);
-            System.out.println("CT file: " + ctPath);
-            System.out.println("Airway file: " + airwayPath);
-            System.out.println("Lung file: " + lungPath);
-
-            double[][][] ct = loadVolume(ctPath);
-            double[][][] airway = loadVolume(airwayPath);
-            double[][][] lung = loadVolume(lungPath);
-
-            checkSameShape(ct, airway, "CT", "airway");
-            checkSameShape(ct, lung, "CT", "lung");
-
-            @SuppressWarnings("unused")
-			int xDim = ct.length;
-            int yDim = ct[0].length;
-            int zDim = ct[0][0].length;
-
-            Path outDir = Paths.get(config.outputRoot, caseNumber);
-            Path ctDir = outDir.resolve("ct_coronal_png");
-            Path airwayDir = outDir.resolve("airway_coronal_png");
-            Path overlayDir = outDir.resolve("overlay_coronal_png");
-
-            Files.createDirectories(ctDir);
-            Files.createDirectories(airwayDir);
-            Files.createDirectories(overlayDir);
-
-            int savedCount = 0;
-
-            for (int y = 0; y < yDim; y++) {
-                double[][] ctSlice = getCoronalSlice(ct, y);
-                double[][] airwaySlice = getCoronalSlice(airway, y);
-                double[][] lungSlice = getCoronalSlice(lung, y);
-
-                boolean[][] airwayMask = greaterThanZero(airwaySlice);
-                boolean[][] lungMask = greaterThanZero(lungSlice);
-
-                if (config.onlyNonemptyAirway && !anyTrue(airwayMask)) {
-                    continue;
-                }
-
-                // Keep CT values only inside lung; outside lung make it very dark.
-                double[][] maskedCtSlice = applyMaskOrFill(ctSlice, lungMask, config.clipMin);
-
-                int[][] ctU8 = normalizeCtSlice(maskedCtSlice, config.clipMin, config.clipMax);
-                int[][] airwayU8 = maskToUInt8(airwayMask);
-
-                ctU8 = rotate90CounterClockwise(ctU8);
-                airwayU8 = rotate90CounterClockwise(airwayU8);
-
-                boolean[][] airwayMaskDisplay = intImageToMask(airwayU8);
-                int[][][] overlay = makeOverlay(ctU8, airwayMaskDisplay);
-
-                String filename = String.format("coronal_%03d.png", savedCount);
-
-                saveGrayPng(ctU8, ctDir.resolve(filename));
-                saveGrayPng(airwayU8, airwayDir.resolve(filename));
-                saveRgbPng(overlay, overlayDir.resolve(filename));
-
-                savedCount++;
-            }
-
-            System.out.println("Done. Saved " + savedCount + " coronal slices into: " + outDir);
+            System.out.println("Done. Saved " + result.savedCount + " coronal slices into: " + result.outputDir);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    // -------------------------
-    // Config / argument parsing
-    // -------------------------
+    public static class ConversionResult {
+        public final int savedCount;
+        public final Path outputDir;
+
+        public ConversionResult(int savedCount, Path outputDir) {
+            this.savedCount = savedCount;
+            this.outputDir = outputDir;
+        }
+    }
 
     static class Config {
         String caseNumber;
@@ -166,36 +108,89 @@ public class ConvertCT {
         return config;
     }
 
-    // -------------------------
-    // File finding
-    // -------------------------
+    public static ConversionResult convertCaseFromFolder(
+            Path caseDir,
+            Path outputRoot,
+            boolean onlyNonemptyAirway,
+            double clipMin,
+            double clipMax) throws Exception {
+
+        if (caseDir == null || !Files.exists(caseDir) || !Files.isDirectory(caseDir)) {
+            throw new IOException("Selected case folder is invalid: " + caseDir);
+        }
+
+        String caseNumber = caseDir.getFileName().toString();
+
+        Path ctPath = findNiftiFile(caseDir, caseNumber + "_CT_HR");
+        Path airwayPath = findNiftiFile(caseDir, caseNumber + "_CT_HR_label_airways");
+        Path lungPath = findNiftiFile(caseDir, caseNumber + "_CT_HR_label_lungs");
+
+        double[][][] ct = loadVolume(ctPath);
+        double[][][] airway = loadVolume(airwayPath);
+        double[][][] lung = loadVolume(lungPath);
+
+        checkSameShape(ct, airway, "CT", "airway");
+        checkSameShape(ct, lung, "CT", "lung");
+
+        int yDim = ct[0].length;
+
+        Path outDir = outputRoot.resolve(caseNumber);
+        Path ctDir = outDir.resolve("ct_coronal_png");
+        Path airwayDir = outDir.resolve("airway_coronal_png");
+        Path overlayDir = outDir.resolve("overlay_coronal_png");
+
+        Files.createDirectories(ctDir);
+        Files.createDirectories(airwayDir);
+        Files.createDirectories(overlayDir);
+
+        int savedCount = 0;
+
+        for (int y = 0; y < yDim; y++) {
+            double[][] ctSlice = getCoronalSlice(ct, y);
+            double[][] airwaySlice = getCoronalSlice(airway, y);
+            double[][] lungSlice = getCoronalSlice(lung, y);
+
+            boolean[][] airwayMask = greaterThanZero(airwaySlice);
+            boolean[][] lungMask = greaterThanZero(lungSlice);
+
+            if (onlyNonemptyAirway && !anyTrue(airwayMask)) {
+                continue;
+            }
+
+            double[][] maskedCtSlice = applyMaskOrFill(ctSlice, lungMask, clipMin);
+
+            int[][] ctU8 = normalizeCtSlice(maskedCtSlice, clipMin, clipMax);
+            int[][] airwayU8 = maskToUInt8(airwayMask);
+
+            ctU8 = rotate90CounterClockwise(ctU8);
+            airwayU8 = rotate90CounterClockwise(airwayU8);
+
+            boolean[][] airwayMaskDisplay = intImageToMask(airwayU8);
+            int[][][] overlay = makeOverlay(ctU8, airwayMaskDisplay);
+
+            String filename = String.format("coronal_%03d.png", savedCount);
+
+            saveGrayPng(ctU8, ctDir.resolve(filename));
+            saveGrayPng(airwayU8, airwayDir.resolve(filename));
+            saveRgbPng(overlay, overlayDir.resolve(filename));
+
+            savedCount++;
+        }
+
+        return new ConversionResult(savedCount, outDir);
+    }
 
     private static Path findNiftiFile(Path caseDir, String baseName) throws IOException {
         Path nii = caseDir.resolve(baseName + ".nii");
         Path niiGz = caseDir.resolve(baseName + ".nii.gz");
 
-        if (Files.exists(nii)) {
-            return nii;
-        }
-        if (Files.exists(niiGz)) {
-            return niiGz;
-        }
+        if (Files.exists(nii)) return nii;
+        if (Files.exists(niiGz)) return niiGz;
 
-        throw new IOException("Could not find " + baseName + ".nii or " + baseName + ".nii.gz in " + caseDir);
+        throw new IOException("Could not find " + baseName + ".nii or .nii.gz in " + caseDir);
     }
 
-    // -------------------------
-    // NIfTI loading
-    // -------------------------
-
     private static double[][][] loadVolume(Path path) throws IOException {
-        /*
-         * This is the part that depends on the NIfTI Java library.
-         * The code below is written in the style commonly used with niftijio.
-         * If Eclipse complains here, send me the exact JAR name / error and I’ll
-         * adjust these lines to your library’s exact API.
-         */
-
         NiftiVolume volume = NiftiVolume.read(path.toString());
 
         int xDim = volume.header.dim[1];
@@ -215,25 +210,11 @@ public class ConvertCT {
         return out;
     }
 
-    // -------------------------
-    // Shape checks
-    // -------------------------
-
     private static void checkSameShape(double[][][] a, double[][][] b, String aName, String bName) {
         if (a.length != b.length || a[0].length != b[0].length || a[0][0].length != b[0][0].length) {
-            throw new IllegalArgumentException(
-                "Shape mismatch: " + aName + " shape " + shapeString(a) + " != " + bName + " shape " + shapeString(b)
-            );
+            throw new IllegalArgumentException("Shape mismatch: " + aName + " != " + bName);
         }
     }
-
-    private static String shapeString(double[][][] v) {
-        return "(" + v.length + ", " + v[0].length + ", " + v[0][0].length + ")";
-    }
-
-    // -------------------------
-    // Slice extraction
-    // -------------------------
 
     private static double[][] getCoronalSlice(double[][][] volume, int yIndex) {
         int xDim = volume.length;
@@ -249,10 +230,6 @@ public class ConvertCT {
 
         return slice;
     }
-
-    // -------------------------
-    // Masks
-    // -------------------------
 
     private static boolean[][] greaterThanZero(double[][] slice) {
         int h = slice.length;
@@ -271,9 +248,7 @@ public class ConvertCT {
     private static boolean anyTrue(boolean[][] mask) {
         for (boolean[] row : mask) {
             for (boolean value : row) {
-                if (value) {
-                    return true;
-                }
+                if (value) return true;
             }
         }
         return false;
@@ -293,19 +268,13 @@ public class ConvertCT {
         return out;
     }
 
-    // -------------------------
-    // Normalization
-    // -------------------------
-
     private static int[][] normalizeCtSlice(double[][] ctSlice, double clipMin, double clipMax) {
         int h = ctSlice.length;
         int w = ctSlice[0].length;
         int[][] out = new int[h][w];
 
         double denom = clipMax - clipMin;
-        if (denom == 0.0) {
-            denom = 1e-8;
-        }
+        if (denom == 0.0) denom = 1e-8;
 
         for (int i = 0; i < h; i++) {
             for (int j = 0; j < w; j++) {
@@ -318,7 +287,7 @@ public class ConvertCT {
                 if (scaled < 0.0) scaled = 0.0;
                 if (scaled > 1.0) scaled = 1.0;
 
-                out[i][j] = (int)Math.round(scaled * 255.0);
+                out[i][j] = (int) Math.round(scaled * 255.0);
             }
         }
 
@@ -353,10 +322,6 @@ public class ConvertCT {
         return mask;
     }
 
-    // -------------------------
-    // Rotation
-    // -------------------------
-
     private static int[][] rotate90CounterClockwise(int[][] img) {
         int h = img.length;
         int w = img[0].length;
@@ -371,10 +336,6 @@ public class ConvertCT {
         return out;
     }
 
-    // -------------------------
-    // Overlay
-    // -------------------------
-
     private static int[][][] makeOverlay(int[][] ctGray, boolean[][] airwayMask) {
         int h = ctGray.length;
         int w = ctGray[0].length;
@@ -383,7 +344,6 @@ public class ConvertCT {
         for (int i = 0; i < h; i++) {
             for (int j = 0; j < w; j++) {
                 int gray = ctGray[i][j];
-
                 rgb[i][j][0] = gray;
                 rgb[i][j][1] = gray;
                 rgb[i][j][2] = gray;
@@ -398,10 +358,6 @@ public class ConvertCT {
 
         return rgb;
     }
-
-    // -------------------------
-    // PNG saving
-    // -------------------------
 
     private static void saveGrayPng(int[][] img, Path path) throws IOException {
         int h = img.length;
@@ -430,7 +386,6 @@ public class ConvertCT {
                 int r = clamp255(rgb[y][x][0]);
                 int g = clamp255(rgb[y][x][1]);
                 int b = clamp255(rgb[y][x][2]);
-
                 int packed = (r << 16) | (g << 8) | b;
                 buffered.setRGB(x, y, packed);
             }
