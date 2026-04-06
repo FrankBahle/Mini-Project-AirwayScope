@@ -1,22 +1,19 @@
 import javafx.application.Application;
 import javafx.stage.Stage;
 
-public class Main extends Application{
+public class Main extends Application {
 
-	
-
-	@Override
-	public void start(Stage primaryStage) throws Exception {
-		MainUI ui = new MainUI();
+    @Override
+    public void start(Stage primaryStage) {
+        MainUI ui = new MainUI();
         primaryStage.setTitle("Airway Analysis System");
         primaryStage.setScene(ui.createScene(primaryStage));
-        primaryStage.setMinWidth(1100);
-        primaryStage.setMinHeight(750);
+        primaryStage.setMinWidth(1200);
+        primaryStage.setMinHeight(800);
         primaryStage.show();
-	}
-	public static void main(String[] args) {
-		Application.launch(args);
+    }
 
-	}
-
+    public static void main(String[] args) {
+        Application.launch(args);
+    }
 }
