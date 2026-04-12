@@ -1,5 +1,9 @@
 package filter;
 
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+
 import model.AirwayImage;
 
 public class ImageFilter 
@@ -83,5 +87,35 @@ public class ImageFilter
 
     public void setThreshold(int threshold) {
         this.threshold = threshold;
+    }
+    
+    public void printBinaryMaskToFile(String fileName) {
+        if (maskedImage == null) {
+            System.out.println("null");
+
+            try (PrintWriter writer = new PrintWriter(new FileWriter(fileName))) {
+                writer.println("null");
+            } catch (IOException e) {
+                System.out.println("Error writing binary mask to file: " + e.getMessage());
+            }
+
+            return;
+        }
+
+        try (PrintWriter writer = new PrintWriter(new FileWriter(fileName))) {
+            for (int h = 0; h < maskedImage.length; h++) {
+                for (int w = 0; w < maskedImage[h].length; w++) {
+                    System.out.print(maskedImage[h][w] + " ");
+                    writer.print(maskedImage[h][w] + " ");
+                }
+                System.out.println();
+                writer.println();
+            }
+
+            System.out.println("Binary mask saved to: " + fileName);
+
+        } catch (IOException e) {
+            System.out.println("Error writing binary mask to file: " + e.getMessage());
+        }
     }
 }

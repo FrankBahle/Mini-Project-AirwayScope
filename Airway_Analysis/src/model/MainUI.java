@@ -1,4 +1,5 @@
 package model;
+import javafx.scene.canvas.Canvas;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -7,16 +8,21 @@ import java.util.Comparator;
 import java.util.Optional;
 import java.util.stream.Stream;
 
+import GraphConstruction.Graph;
+import GraphConstruction.GraphBuild;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -30,19 +36,21 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import filter.*;
+import GraphConstruction.GraphOverlay;
 
 public class MainUI {
 
     private final ImageView originalImageView = new ImageView();
-    private final ImageView processedImageView = new ImageView();
-    private final ImageView graphImageView = new ImageView();
     private final ImageView finalImageView = new ImageView();
-    private AirwayImage finalAirwayImage = new AirwayImage();
-    
+    private final ImageView GraphImageView = new ImageView();
+    private final ImageView EdgeImageView = new ImageView();
     
     private final Label originalPlaceholder = new Label("No case folder selected");
     private final Label finalPlaceholder = new Label("No final compressed image yet");
+    private final Label EdgePlaceholder = new Label("No final edge image yet");
+    private final Label GraphPlaceholder = new Label("No graph edge image yet");
 
+    
     private final Label affectedBranchValue = new Label("—");
     private final Label narrowingValue = new Label("—");
     private final Label pathTraceValue = new Label("—");
@@ -90,8 +98,11 @@ public class MainUI {
 
         VBox originalCard = createImageCard("CT Preview", originalImageView, originalPlaceholder);
         VBox finalCard = createImageCard("Final Compressed Image", finalImageView, finalPlaceholder);
+        VBox EdgeCard = createImageCard("Edged Image", EdgeImageView, EdgePlaceholder);
+        VBox GraphOverlay = createImageCard("Graph Image", GraphImageView, GraphPlaceholder);
 
-        HBox imageSection = new HBox(15, originalCard,  finalCard);
+        
+        HBox imageSection = new HBox(15, originalCard,  finalCard , EdgeCard , GraphOverlay);
         imageSection.setPadding(new Insets(20, 20, 10, 20));
 
         ScrollPane imageScrollPane = new ScrollPane(imageSection);
@@ -254,13 +265,12 @@ public class MainUI {
             latestOutputDir = null;
 
             originalImageView.setImage(null);
-            processedImageView.setImage(null);
-            graphImageView.setImage(null);
             finalImageView.setImage(null);
 
             originalPlaceholder.setVisible(true);
             finalPlaceholder.setVisible(true);
-
+            EdgePlaceholder.setVisible(true);
+            
             affectedBranchValue.setText(folder.getName());
             narrowingValue.setText("—");
             pathTraceValue.setText("—");
@@ -351,23 +361,46 @@ public class MainUI {
             compressBtn.setDisable(false);
 
             PngCaseCompressor.CompressionResult result = task.getValue();
+             AirwayImage finalAirwayImage = new AirwayImage();
 
             finalAirwayImage = result.getFinalImage();
             finalImageView.setImage(result.getFinalImage().displayPixels());
             finalPlaceholder.setVisible(false);
             
-            ////////////////GREY SCALE EDGE DETECTION AND BINARY MASKING
+            
+            ////////////////GREY SCALE EDGE DETECTION AND BINARY MASKING AND GRAPHOVERLAY 
             
             ImageFilter finalGreyScale = new ImageFilter(finalAirwayImage);
             finalGreyScale.applyGrayScale();
 
-            EdgeDetection finalEdge = new EdgeDetection(finalGreyScale.getGreyScaleImage(), 255);
-
+            EdgeDetection finalEdge = new EdgeDetection(finalGreyScale.getGreyScaleImage(), 1);
+            EdgeImageView.setImage(finalEdge.getEdgeImage().displayPixels());
+            EdgePlaceholder.setVisible(false);
+            
             ImageFilter finalGreyScaleNew = new ImageFilter(finalEdge.getEdgeImage());
             finalGreyScaleNew.setThreshold(100); 
             finalGreyScaleNew.applyMask();
-
+            
             int[][] binaryMask = finalGreyScaleNew.getBinaryMask();
+            
+            finalGreyScaleNew.printBinaryMaskToFile("src/binaryMask.txt");
+            Image originalImage = originalImageView.getImage();
+
+            GraphBuild builder = new GraphBuild(binaryMask);
+            Graph graph = builder.buildGraph();
+
+            GraphOverlay.OverlayData overlayData = GraphOverlay.buildOverlayData(
+                    graph,
+                    finalImageView.getImage().getWidth(),
+                    finalImageView.getImage().getHeight(),
+                    binaryMask.length,
+                    binaryMask[0].length
+            );
+
+            Image overlayResult = createOverlayedImage(finalImageView.getImage(), overlayData);
+
+            GraphImageView.setImage(overlayResult);
+            
             
             conditionValue.setText("Compression complete. Final airway image created.");
             statusLabel.setText("Status: Final compressed airway image created successfully.");
@@ -425,18 +458,63 @@ public class MainUI {
         latestOutputDir = null;
 
         originalImageView.setImage(null);
-        processedImageView.setImage(null);
-        graphImageView.setImage(null);
         finalImageView.setImage(null);
-
+        GraphImageView.setImage(null);
+        EdgeImageView.setImage(null);
+        
         originalPlaceholder.setVisible(true);
         finalPlaceholder.setVisible(true);
-
+        EdgePlaceholder.setVisible(true);
+        
         affectedBranchValue.setText("—");
         narrowingValue.setText("—");
         pathTraceValue.setText("—");
         conditionValue.setText("—");
 
         statusLabel.setText("Status: Cleared. Waiting for case folder upload...");
+    }
+    
+    private Image createOverlayedImage(Image baseImage, GraphOverlay.OverlayData overlayData) {
+        double width = baseImage.getWidth();
+        double height = baseImage.getHeight();
+
+        javafx.scene.canvas.Canvas canvas = new javafx.scene.canvas.Canvas(width, height);
+        javafx.scene.canvas.GraphicsContext gc = canvas.getGraphicsContext2D();
+
+        gc.drawImage(baseImage, 0, 0, width, height);
+
+        // draw straight red lines
+        gc.setStroke(javafx.scene.paint.Color.RED);
+        gc.setLineWidth(2.0);
+
+        for (GraphOverlay.OverlayLine line : overlayData.getLines()) {
+            gc.strokeLine(line.getX1(), line.getY1(), line.getX2(), line.getY2());
+        }
+
+        // draw nodes
+        for (GraphOverlay.OverlayNode node : overlayData.getNodes()) {
+            switch (node.getType()) {
+                case START:
+                    gc.setFill(javafx.scene.paint.Color.BLUE);
+                    break;
+                case END:
+                   gc.setFill(javafx.scene.paint.Color.LIMEGREEN);
+                    break;
+                case BRANCH:
+                    gc.setFill(javafx.scene.paint.Color.YELLOW);
+                    break;
+                default:
+                   gc.setFill(javafx.scene.paint.Color.WHITE);
+                    break;
+            }
+
+            double radius = 0.0;
+            gc.fillOval(node.getX() - radius, node.getY() - radius, radius * 2, radius * 2);
+        }
+
+        javafx.scene.image.WritableImage result =
+                new javafx.scene.image.WritableImage((int) Math.ceil(width), (int) Math.ceil(height));
+
+        return canvas.snapshot(new javafx.scene.SnapshotParameters(), result);
     }
 }
