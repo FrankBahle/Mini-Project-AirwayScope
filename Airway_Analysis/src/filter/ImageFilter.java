@@ -105,14 +105,10 @@ public class ImageFilter
         try (PrintWriter writer = new PrintWriter(new FileWriter(fileName))) {
             for (int h = 0; h < maskedImage.length; h++) {
                 for (int w = 0; w < maskedImage[h].length; w++) {
-                    System.out.print(maskedImage[h][w] + " ");
                     writer.print(maskedImage[h][w] + " ");
                 }
-                System.out.println();
                 writer.println();
             }
-
-            System.out.println("Binary mask saved to: " + fileName);
 
         } catch (IOException e) {
             System.out.println("Error writing binary mask to file: " + e.getMessage());

@@ -1,6 +1,6 @@
 package GraphConstruction;
 
-import java.util.ArrayList;
+import DataStructure.ArrayList;
 import java.util.Collections;
 import java.util.List;
 

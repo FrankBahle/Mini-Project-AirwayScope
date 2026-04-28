@@ -182,13 +182,19 @@ public class ConvertCT {
     }
 
     private static Path findNiftiFile(Path caseDir, String baseName) throws IOException {
-        Path nii = caseDir.resolve(baseName + ".nii");
+        // Try .nii.gz first
         Path niiGz = caseDir.resolve(baseName + ".nii.gz");
-
-        if (Files.exists(nii)) return nii;
         if (Files.exists(niiGz)) return niiGz;
-
-        throw new IOException("Could not find " + baseName + ".nii or .nii.gz in " + caseDir);
+        
+        // Try .ni.gz (your file has one 'i')
+        Path niGz = caseDir.resolve(baseName + ".ni.gz");
+        if (Files.exists(niGz)) return niGz;
+        
+        // Try .nii
+        Path nii = caseDir.resolve(baseName + ".nii");
+        if (Files.exists(nii)) return nii;
+        
+        throw new IOException("Could not find " + baseName + " in " + caseDir);
     }
 
     private static double[][][] loadVolume(Path path) throws IOException {
