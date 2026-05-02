@@ -1,32 +1,31 @@
 package DataStructure;
 
-import GraphConstruction.AirwayNode;
+public class HeapNode<T> {
+    private T value;
+    private double cost;
+    HeapNode<T> leftHeap;
+    HeapNode<T> rightHeap;
 
-public class HeapNode {
-	private AirwayNode node;
-	private double cost;
-	HeapNode leftHeap;
-	HeapNode rightHeap;
-	
-	public HeapNode(AirwayNode n,double c) {
-		node=n;
-		cost=c;
-		leftHeap=null;
-		rightHeap=null;
-	}
-	
-	public AirwayNode getAirWayNode() {
-		return node;
-	}
-	
-	public void setAirWayNode(AirwayNode awNode) {
-		node = awNode;
-	}
-	public double getCost() {
-		return cost;
-	}
-	
-	public void setCost(double c) {
-		cost=c;
-	}
+    public HeapNode(T value, double cost) {
+        this.value = value;
+        this.cost = cost;
+        this.leftHeap = null;
+        this.rightHeap = null;
+    }
+
+    public T getValue() {
+        return value;
+    }
+
+    public void setValue(T value) {
+        this.value = value;
+    }
+
+    public double getCost() {
+        return cost;
+    }
+
+    public void setCost(double cost) {
+        this.cost = cost;
+    }
 }
