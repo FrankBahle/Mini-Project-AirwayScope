@@ -1,2 +1,4 @@
 # Mini-Project-AirwayScope
-Airway Vision is a Java desktop app that analyzes chest CT airway images using graph-based methods. It extracts the airway tree, converts it into nodes and edges, compares structural similarity, and traces paths to suspicious branches to support clearer clinical review.
+The Airway Analysis System is a Java desktop application designed to support CT airway image review using graph-based analysis methods. The system processes CT airway case data, converts image slices into a simplified airway representation, and builds a graph structure where airway branch points and endpoints are represented as nodes, while airway segments are represented as edges.
+
+The project combines image processing, graph data structures, feature extraction, similarity detection, suspicious node identification, and pathfinding into one review system. It uses techniques such as grayscale conversion, Sobel edge detection, binary masking, Zhang-Suen thinning, custom graph construction, KNN-style similarity comparison, and Dijkstra or A* pathfinding to highlight airway regions that may need closer expert review.
