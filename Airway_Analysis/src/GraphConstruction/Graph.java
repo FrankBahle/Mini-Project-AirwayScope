@@ -2,7 +2,7 @@ package GraphConstruction;
 
 import DataStructure.*;
 import java.util.Collections;
-import java.util.HashMap;
+import DataStructure.HashMap;
 import java.util.List;
 import java.util.Map;
 
